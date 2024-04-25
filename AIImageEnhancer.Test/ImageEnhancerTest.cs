@@ -23,31 +23,22 @@ public class ImageEnhancerTest {
             Directory.CreateDirectory(imagesPath);
         }
 
-        var filesModels = Directory.GetFiles(models);
-        var imgs = Directory.GetFiles(imagesPath);
-        var mFiles = filesModels.Select(f => new FileInfo(f).Name.Split(".")[0]).ToList();
-        var log = "";
-
-        foreach (var modelName in mFiles) {
-            try {
-                using var imageEnhancer = new ImageEnhancer();
-                if (imageEnhancer.LoadModel(models, modelName, 0)) {
-                    imageEnhancer.ScaleAndSave($"{imagesPath}\\teste.jpg", imagesPath, "jpg", false, 400);
-                }
-            } catch (Exception e) { }
-
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-        }
-    
+        //var filesModels = Directory.GetFiles(models);
+        //var imgs = Directory.GetFiles(imagesPath);
+        //var mFiles = filesModels.Select(f => new FileInfo(f).Name.Split(".")[0]).ToList();
 
 
+        try {
+            using var imageEnhancer = new ImageEnhancer();
+            if (imageEnhancer.LoadModel(models, "SwinIR-M_x4_GAN", 0)) {
+                imageEnhancer.ScaleAndSave($"{imagesPath}\\teste.jpg", imagesPath, "jpg", false, 400);
+            }
+        } catch (Exception e) { }
 
-        if (!string.IsNullOrEmpty(log)) {
-            File.WriteAllText(log, $"{imagesPath}\\log.txt");
-        }
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
 
-        Assert.IsNotNull(true);
+        Assert.IsNotNull(File.Exists($"{imagesPath}\\teste_SwinIR-M_x4_GAN.jpg"));
          
     }
 }
