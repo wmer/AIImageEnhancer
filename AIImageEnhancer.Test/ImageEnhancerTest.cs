@@ -30,8 +30,8 @@ public class ImageEnhancerTest {
 
         try {
             using var imageEnhancer = new ImageEnhancer();
-            if (imageEnhancer.LoadModel(models, "SwinIR-M_x4_GAN", 0)) {
-                imageEnhancer.ScaleAndSave($"{imagesPath}\\teste.jpg", imagesPath, "jpg", false, 400);
+            if (imageEnhancer.LoadModel(models, "realesrgan-x4plus", 0)) {
+                imageEnhancer.ScaleAndSave($"{imagesPath}\\teste_realesrgan-x4plus_anime_6B.jpg", imagesPath, "jpg", false, 400);
             }
         } catch (Exception e) { }
 
