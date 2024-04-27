@@ -92,14 +92,14 @@ public class ImageEnhancer : IDisposable {
                     for (int j = 0; j < partsBlock.Count; j++) {
                         var block = partsBlock[j];
 
-                        var blockMelhoradaPart = Scale(block, preserveAlpha, reductionPercentage);
+                        var blockMelhoradaPart = Enhance(block, preserveAlpha, reductionPercentage);
                         partsBlockEnchagend.Add(blockMelhoradaPart);
                     }
 
                     var imgMelhoradaPart = ImageHelper.CombineOnSide(partsBlockEnchagend);
                     partsEnchagend.Add(imgMelhoradaPart);
                 } else {
-                    var imgMelhoradaPart = Scale(part, preserveAlpha, reductionPercentage);
+                    var imgMelhoradaPart = Enhance(part, preserveAlpha, reductionPercentage);
                     partsEnchagend.Add(imgMelhoradaPart);
                 }
 
@@ -110,14 +110,14 @@ public class ImageEnhancer : IDisposable {
             return saves;
         }
 
-        return Scale(image, preserveAlpha, reductionPercentage);
+        return Enhance(image, preserveAlpha, reductionPercentage);
     }
 
 
 
-    public Bitmap? Scale(Bitmap? image, bool preserveAlpha, int reductionPercentage) {
+    public Bitmap? Enhance(Bitmap? image, bool preserveAlpha, int reductionPercentage) {
         var originalPixelFormat = image.PixelFormat;
-
+         
         Bitmap? alpha = null;
         if (preserveAlpha && originalPixelFormat != PixelFormat.Format24bppRgb) {
             if (image?.PixelFormat != PixelFormat.Format32bppArgb) {
@@ -201,14 +201,14 @@ public class ImageEnhancer : IDisposable {
     }
 
     private Bitmap Resize(Bitmap? image, int overLimit) {
-       var magikImage = BitmapToMagickImage(image);
+        var magikImage = BitmapToMagickImage(image);
         using var memStream = Resize(magikImage, overLimit);
         image = new Bitmap(memStream);
         return image;
     }
 
     private Bitmap ResizePerPercent(Bitmap? image, int percent) {
-       var magikImage = BitmapToMagickImage(image);
+        var magikImage = BitmapToMagickImage(image);
         using var memStream = ResizePerPercent(magikImage, percent);
         image = new Bitmap(memStream);
         return image;
@@ -220,6 +220,7 @@ public class ImageEnhancer : IDisposable {
         image.Save(ms, ImageFormat.Bmp);
         ms.Position = 0;
         MagickImage magikImage = new(m.Image.Create(ms));
+        image.Dispose();
 
         return magikImage;
     }
@@ -228,6 +229,27 @@ public class ImageEnhancer : IDisposable {
         var memStream = new MemoryStream();
         magickImage.Write(memStream);
         return memStream;
+    }
+
+    static void DarkenImage(Bitmap bmp, double multiplier) {
+        for (int i = 0; i < bmp.Width; i++) {
+            // Iterates over all the pixels
+            for (int j = 0; j < bmp.Height; j++) {
+                // Gets the current pixel
+                var currentPixel = bmp.GetPixel(i, j);
+
+                // Assigns each value the multiply, or the max value 255
+
+                var newPixel = Color.FromArgb(
+                    Math.Min((byte)255, (byte)(currentPixel.R * multiplier)),
+                    Math.Min((byte)255, (byte)(currentPixel.G * multiplier)),
+                    Math.Min((byte)255, (byte)(currentPixel.B * multiplier))
+                    );
+
+                // Sets the pixel 
+                bmp.SetPixel(i, j, newPixel);
+            }
+        }
     }
 
     public Tensor<float> ConvertImageToFloatTensorUnsafe(Bitmap image) {
