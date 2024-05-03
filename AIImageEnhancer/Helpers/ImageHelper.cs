@@ -1,6 +1,8 @@
-﻿using System;
+﻿using ImageMagick;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Drawing.Imaging;
 using System.Text;
 
 namespace Helpers;
@@ -66,16 +68,107 @@ public class ImageHelper {
         Bitmap result = new Bitmap(imageWidths.Sum(), imageHeights.Max());
         using (Graphics g = Graphics.FromImage(result)) {
             for (int i = 0; i < sources.Count; i++) {
-                Bitmap img = sources[i];
+                using Bitmap img = sources[i];
                 g.DrawImage(img, stitchedWidth, 0);
                 stitchedWidth += img.Width;
             }
-
         }
         return result;
 
     }
 
+    public static Bitmap Resize(Bitmap? image, int overLimit) {
+        var magikImage = BitmapToMagickImage(image);
+        var nImage = Resize(magikImage, overLimit);
+        return nImage;
+    }
+
+    public static Bitmap ResizePerPercent(Bitmap? image, int percent) {
+        var magikImage = BitmapToMagickImage(image);
+        image = ResizePerPercent(magikImage, percent);
+        return image;
+    }
+
+    public static Bitmap Resize(MagickImage magickImage, int overLimit) {
+        var Width = magickImage.Width;
+        var Height = magickImage.Height;
+        var percentHeigth = (Height * 60) / 100;
+
+        if (Width > overLimit) {
+            var dif = Width - overLimit;
+
+            if ((Height - dif) < percentHeigth) {
+                dif = Height - percentHeigth;
+            }
+
+            Width -= dif;
+            Height -= dif;
+        }
+
+        MagickGeometry geometry = new(Width, Height);
+        magickImage.Resize(geometry);
+        var image = MagickImageToBitmap(magickImage);
+        return image;
+    }
+
+    public static Bitmap ResizePerPercent(MagickImage magickImage, int percent) {
+        var Width = magickImage.Width;
+        var Height = magickImage.Height;
+
+        var reduncionWidth = (Width * percent) / 100;
+        var reduncionHeight = (Height * percent) / 100;
+
+        Width -= reduncionWidth;
+        Height -= reduncionHeight;
+
+        MagickGeometry geometry = new(Width, Height);
+        magickImage.Resize(geometry);
+        var image = MagickImageToBitmap(magickImage);
+        return image;
+    }
+
+    public static Bitmap IncraseBrightnessContrast(Bitmap? image, int brilho, int contrast) {
+        var magikImage = BitmapToMagickImage(image);
+        magikImage.BrightnessContrast(new Percentage(brilho), new Percentage(contrast));
+        var nImage = MagickImageToBitmap(magikImage);
+        return nImage;
+    }
+
+    public static MagickImage BitmapToMagickImage(Bitmap? image) {
+        var m = new MagickFactory();
+        using var ms = new MemoryStream();
+        image.Save(ms, ImageFormat.Bmp);
+        ms.Position = 0;
+        MagickImage magikImage = new(m.Image.Create(ms)) {
+            Format = MagickFormat.Png
+        };
+
+        image.Dispose();
+
+        return magikImage;
+    }
+
+    public static Bitmap MagickImageToBitmap(MagickImage magickImage) {
+        using var memStream = new MemoryStream();
+        magickImage.Write(memStream);
+        var image = new Bitmap(memStream);
+        magickImage.Dispose();
+        return image;
+    }
+
+    //public static Bitmap CropImage(Bitmap image) {
+    //    var mahickImage = BitmapToMagickImage(image);
+
+    //    int height = mahickImage.Page.Height;
+    //    int width = mahickImage.Page.Width;
+
+    //    mahickImage.ColorFuzz = new Percentage(0);
+
+    //    mahickImage.Trim();
+
+    //    var nImage = MagickImageToBitmap(mahickImage);
+    //    return nImage;
+    //}
 
     public static Bitmap CropImage(Bitmap image) {
         // Get the non-transparent bounds of the image

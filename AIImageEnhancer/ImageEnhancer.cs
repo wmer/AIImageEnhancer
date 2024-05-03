@@ -6,6 +6,7 @@ using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
@@ -38,15 +39,15 @@ public class ImageEnhancer : IDisposable {
     }
 
 
-    public void ScaleAndSave(List<string> inputPaths, string outputPath, string outputFormat, bool preserveAlpham, int overDimensionLimit = 300, int reductionPercentage = 0) {
+    public void ScaleAndSave(List<string> inputPaths, string outputPath, string outputFormat, bool preserveAlpham, int overDimensionLimit = 300, int contraste = 0, int reductionPercentage = 0) {
         foreach (var inputPath in inputPaths) {
-            ScaleAndSave(inputPath, outputPath, outputFormat, preserveAlpham, overDimensionLimit, reductionPercentage);
+            ScaleAndSave(inputPath, outputPath, outputFormat, preserveAlpham, overDimensionLimit, contraste, reductionPercentage);
         }
     }
 
-    public void ScaleAndSave(string inputPath, string outputPath, string outputFormat, bool preserveAlpha, int overDimensionLimit = 300, int reductionPercentage = 0) {
+    public void ScaleAndSave(string inputPath, string outputPath, string outputFormat, bool preserveAlpha, int overDimensionLimit = 300, int contraste = 0, int reductionPercentage = 0) {
         var fileInfo = new FileInfo(inputPath);
-        using Bitmap image = Scale(inputPath, preserveAlpha, overDimensionLimit, reductionPercentage);
+        using Bitmap image = Scale(inputPath, preserveAlpha, overDimensionLimit, contraste, reductionPercentage);
 
         var saveName = $"{fileInfo.Name.Split(".")[0]}_{_modelName}.{outputFormat}";
         var savePath = $"{outputPath}\\{saveName}";
@@ -55,7 +56,7 @@ public class ImageEnhancer : IDisposable {
         image?.Save(savePath);
     }
 
-    public Bitmap? Scale(string inputPath, bool preserveAlpha = false, int overDimensionLimit = 300, int reductionPercentage = 0) {
+    public Bitmap? Scale(string inputPath, bool preserveAlpha = false, int overDimensionLimit = 300, int contraste = 0, int reductionPercentage = 0) {
         Bitmap image = null;
 
         var fileInfo = new FileInfo(inputPath);
@@ -63,19 +64,25 @@ public class ImageEnhancer : IDisposable {
         if (fileInfo.Extension is ".jpg" or ".jpeg" or "png") {
             image = new Bitmap(inputPath);
         } else {
-            using var imageFromStream = new MagickImage(inputPath);
-            using MemoryStream memStream = ToMemoryStream(imageFromStream);
-
-            image = new Bitmap(memStream);
+            using var magickImage = new MagickImage(inputPath);
+            image = ImageHelper.MagickImageToBitmap(magickImage);
         }
 
 
-        return Scale(image, preserveAlpha, overDimensionLimit, reductionPercentage);
+        return Scale(image, preserveAlpha, overDimensionLimit, contraste, reductionPercentage);
     }
 
-    public Bitmap? Scale(Bitmap? image, bool preserveAlpha, int overDimensionLimit, int reductionPercentage = 0) {
+    public Bitmap? Scale(Bitmap? image, bool preserveAlpha, int overDimensionLimit, int contraste = 0, int reductionPercentage = 0) {
+        var brilho = 0;
+        var contrast = 0;
+
+        if (contraste > 0) {
+             contrast = contraste / 2;
+            image = ImageHelper.IncraseBrightnessContrast(image, brilho, contrast);
+        }
+
         if (image.Width > (overDimensionLimit * 2)) {
-            image = Resize(image, (overDimensionLimit * 2));
+            image = ImageHelper.Resize(image, (overDimensionLimit * 2));
         }
 
         if (image.Height > overDimensionLimit) {
@@ -86,20 +93,10 @@ public class ImageEnhancer : IDisposable {
                 var part = parts[i];
 
                 if (part.Width > overDimensionLimit) {
-                    var partsBlockEnchagend = new List<Bitmap>();
-                    var partsBlock = ImageHelper.VerticalSplit(part, overDimensionLimit);
-
-                    for (int j = 0; j < partsBlock.Count; j++) {
-                        var block = partsBlock[j];
-
-                        var blockMelhoradaPart = Enhance(block, preserveAlpha, reductionPercentage);
-                        partsBlockEnchagend.Add(blockMelhoradaPart);
-                    }
-
-                    var imgMelhoradaPart = ImageHelper.CombineOnSide(partsBlockEnchagend);
+                    var imgMelhoradaPart = SplitVerticalAndEnhance(part, preserveAlpha, overDimensionLimit, reductionPercentage, contrast);
                     partsEnchagend.Add(imgMelhoradaPart);
                 } else {
-                    var imgMelhoradaPart = Enhance(part, preserveAlpha, reductionPercentage);
+                    var imgMelhoradaPart = Enhance(part, preserveAlpha, contrast, reductionPercentage);
                     partsEnchagend.Add(imgMelhoradaPart);
                 }
 
@@ -108,16 +105,34 @@ public class ImageEnhancer : IDisposable {
             var saves = ImageHelper.CombineBelow(partsEnchagend);
 
             return saves;
+        } else {
+            if (image.Width > overDimensionLimit) {
+                return SplitVerticalAndEnhance(image, preserveAlpha, overDimensionLimit, reductionPercentage, contrast);
+            } else {
+                return Enhance(image, preserveAlpha, contrast, reductionPercentage);
+            }
         }
 
-        return Enhance(image, preserveAlpha, reductionPercentage);
     }
 
+    private Bitmap SplitVerticalAndEnhance(Bitmap? image, bool preserveAlpha, int overDimensionLimit, int reductionPercentage, int contrast) {
+        var partsBlockEnchagend = new List<Bitmap>();
+        var partsBlock = ImageHelper.VerticalSplit(image, overDimensionLimit);
 
+        for (int j = 0; j < partsBlock.Count; j++) {
+            var block = partsBlock[j];
 
-    public Bitmap? Enhance(Bitmap? image, bool preserveAlpha, int reductionPercentage) {
+            var blockMelhoradaPart = Enhance(block, preserveAlpha, contrast, reductionPercentage);
+            partsBlockEnchagend.Add(blockMelhoradaPart);
+        }
+
+        var imgMelhoradaPart = ImageHelper.CombineOnSide(partsBlockEnchagend);
+        return imgMelhoradaPart;
+    }
+
+    public Bitmap? Enhance(Bitmap? image, bool preserveAlpha, int contraste, int reductionPercentage) {
         var originalPixelFormat = image.PixelFormat;
-         
+
         Bitmap? alpha = null;
         if (preserveAlpha && originalPixelFormat != PixelFormat.Format24bppRgb) {
             if (image?.PixelFormat != PixelFormat.Format32bppArgb) {
@@ -148,7 +163,12 @@ public class ImageEnhancer : IDisposable {
         }
 
         if (reductionPercentage > 0 && reductionPercentage < 100) {
-            image = ResizePerPercent(image, reductionPercentage);
+            image = ImageHelper.ResizePerPercent(image, reductionPercentage);
+        }
+
+        var brilho = 0;
+        if (contraste > 0) {
+            image = ImageHelper.IncraseBrightnessContrast(image, brilho, contraste);
         }
 
         return image;
@@ -161,96 +181,7 @@ public class ImageEnhancer : IDisposable {
         return (Tensor<float>)output;
     }
 
-    private MemoryStream Resize(MagickImage magickImage, int overLimit) {
-        magickImage.Format = MagickFormat.Png;
 
-        var Width = magickImage.Width;
-        var Height = magickImage.Height;
-
-        if (Width > overLimit) {
-            var dif = Width - overLimit;
-
-            if ((Height - dif) < (Height / 2)) {
-                dif = Height - (Height / 2);
-            }
-
-            Width -= dif;
-            Height -= dif;
-        }
-
-        MagickGeometry geometry = new(Width, Height);
-        magickImage.Resize(geometry);
-        return ToMemoryStream(magickImage);
-    }
-
-    private MemoryStream ResizePerPercent(MagickImage magickImage, int percent) {
-        magickImage.Format = MagickFormat.Png;
-
-        var Width = magickImage.Width;
-        var Height = magickImage.Height;
-
-        var reduncionWidth = (Width * percent) / 100;
-        var reduncionHeight = (Height * percent) / 100;
-
-        Width -= reduncionWidth;
-        Height -= reduncionHeight;
-
-        MagickGeometry geometry = new(Width, Height);
-        magickImage.Resize(geometry);
-        return ToMemoryStream(magickImage);
-    }
-
-    private Bitmap Resize(Bitmap? image, int overLimit) {
-        var magikImage = BitmapToMagickImage(image);
-        using var memStream = Resize(magikImage, overLimit);
-        image = new Bitmap(memStream);
-        return image;
-    }
-
-    private Bitmap ResizePerPercent(Bitmap? image, int percent) {
-        var magikImage = BitmapToMagickImage(image);
-        using var memStream = ResizePerPercent(magikImage, percent);
-        image = new Bitmap(memStream);
-        return image;
-    }
-
-    private MagickImage BitmapToMagickImage(Bitmap? image) {
-        var m = new MagickFactory();
-        using var ms = new MemoryStream();
-        image.Save(ms, ImageFormat.Bmp);
-        ms.Position = 0;
-        MagickImage magikImage = new(m.Image.Create(ms));
-        image.Dispose();
-
-        return magikImage;
-    }
-
-    private MemoryStream ToMemoryStream(MagickImage magickImage) {
-        var memStream = new MemoryStream();
-        magickImage.Write(memStream);
-        return memStream;
-    }
-
-    static void DarkenImage(Bitmap bmp, double multiplier) {
-        for (int i = 0; i < bmp.Width; i++) {
-            // Iterates over all the pixels
-            for (int j = 0; j < bmp.Height; j++) {
-                // Gets the current pixel
-                var currentPixel = bmp.GetPixel(i, j);
-
-                // Assigns each value the multiply, or the max value 255
-
-                var newPixel = Color.FromArgb(
-                    Math.Min((byte)255, (byte)(currentPixel.R * multiplier)),
-                    Math.Min((byte)255, (byte)(currentPixel.G * multiplier)),
-                    Math.Min((byte)255, (byte)(currentPixel.B * multiplier))
-                    );
-
-                // Sets the pixel 
-                bmp.SetPixel(i, j, newPixel);
-            }
-        }
-    }
 
     public Tensor<float> ConvertImageToFloatTensorUnsafe(Bitmap image) {
         // Create the Tensor with the appropiate dimensions for the NN
